@@ -1,0 +1,75 @@
+name: Bug 反馈
+description: 提交一个可复现的缺陷报告
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先搜索是否已有类似问题，并确认你使用的是最新版本。
+
+  - type: input
+    id: app-version
+    attributes:
+      label: 版本号
+      description: 例如 v0.1.0
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题现象
+      description: 实际发生了什么？
+      placeholder: 描述你看到的错误或异常行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 你原本希望发生什么？
+      placeholder: 描述预期结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按 1,2,3... 列出步骤
+      placeholder: |
+        1. 打开应用
+        2. 导入某文件
+        3. 点击开始运行
+        4. 出现错误
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或报错信息
+      description: 可粘贴完整报错栈、截图说明或日志片段
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 其他可能有帮助的上下文

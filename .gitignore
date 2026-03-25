@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.py[cod]
+backend/core/_generated_version.py
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# PyInstaller cache
+*.manifest
+*.pkg
+
+# Local runtime data
+db_cache/
+config.yml
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+

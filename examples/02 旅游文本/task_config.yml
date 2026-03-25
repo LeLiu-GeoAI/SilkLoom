@@ -1,0 +1,35 @@
+llm:
+  api_key: xxxx
+  base_url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  model: glm-4-flash
+  max_tokens: 2048
+  temperature: 0.0
+  max_try: 3
+  timeout: 60
+  retry_delay: 2
+  proxy_url: ''
+  enable_think: false
+run:
+  max_workers: 10
+  shuffle_before_run: true
+task:
+  prompt_template: |-
+    你是一名旅游文本分析助手。
+    请根据给定的游记内容，提取结构化信息并输出标准 JSON。
+    【填写要求】
+    1. 每个字段尽量简洁，优先使用短语。
+    2. 必须依据原文，不得编造不存在的信息。
+    3. 如原文未提及，请填写“未明确说明”。
+    【输入数据】
+    标题：{{ row.get('title') }}
+    正文：{{ row.get('content') }}
+    【输出格式】
+    {{ schema }}
+  target_schema:
+    目的地: 城市或景区名称
+    行程类型: 亲子/文化/休闲/美食/户外等
+    出行时长: 如三日/周末/两周等
+    预算水平: 低/中/高（结合描述判断）
+    交通方式: 文中提及的主要交通方式
+    一句话摘要: 不超过40字总结主要体验
+  task_name: 旅游文本结构化

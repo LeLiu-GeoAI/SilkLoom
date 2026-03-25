@@ -1,0 +1,39 @@
+llm:
+  api_key: xxxx
+  base_url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  model: glm-4-flash
+  max_tokens: 2048
+  temperature: 0.0
+  max_try: 3
+  timeout: 60
+  retry_delay: 2
+  proxy_url: ''
+  enable_think: false
+run:
+  max_workers: 10
+  shuffle_before_run: true
+task:
+  prompt_template: |-
+    你是一名专业的信息抽取专家，擅长从学术论文标题和摘要中提炼关键信息。
+    请根据提供的【标题】和【摘要】，填写下方 JSON 中的各字段内容。
+    【填写要求】
+    1. 每个字段用一句话概括（不超过30字）。
+    2. 必须基于原文，不得编造。
+    3. 若信息缺失，请填写“未明确说明”。
+    4. 表达简洁、客观，避免重复。
+    【字段说明】
+    - 研究背景：该研究所处的领域背景或已有问题
+    - 研究意义：该研究的价值或作用（为什么重要）
+    - 研究问题：论文具体要解决的核心问题
+    - 研究结论：最终得到的主要发现或结果
+    【输入数据】
+    标题：{{ row.get('Article Title') }}
+    摘要：{{ row.get('Abstract') }}
+    【输出格式】
+    {{ schema }}
+  target_schema:
+    研究背景: 一句话概括研究背景（领域+现有问题）
+    研究意义: 一句话说明研究价值（解决什么/带来什么）
+    研究问题: 一句话说明核心研究问题（要解决什么）
+    研究结论: 一句话总结主要结论（发现/方法/效果）
+  task_name: 文献梳理

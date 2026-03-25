@@ -1,0 +1,34 @@
+llm:
+  api_key: xxxx
+  base_url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  model: glm-4-flash
+  max_tokens: 2048
+  temperature: 0.0
+  max_try: 3
+  timeout: 60
+  retry_delay: 2
+  proxy_url: ''
+  enable_think: false
+run:
+  max_workers: 10
+  shuffle_before_run: true
+task:
+  prompt_template: |-
+    你是一名新闻评论分析助手。
+    请根据新闻标题和评论内容，输出结构化分析结果。
+    【填写要求】
+    1. 仅基于评论文本判断，不要过度推断。
+    2. 用语简洁，每个字段控制在一句话或一个短语。
+    3. 如信息不足，请填写“未明确说明”。
+    【输入数据】
+    新闻标题：{{ row.get('news_title') }}
+    评论内容：{{ row.get('comment_text') }}
+    【输出格式】
+    {{ schema }}
+  target_schema:
+    立场倾向: 支持/中立/反对
+    情绪强度: 低/中/高
+    关注议题: 成本/效率/公平/体验/执行等
+    是否提出建议: 是/否
+    关键诉求: 用一句话概括评论核心诉求
+  task_name: 新闻评论分析

@@ -1,0 +1,195 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: SilkLoom
+
+jobs:
+  build-windows:
+    strategy:
+      matrix:
+        architecture: [x86_64]
+    runs-on: windows-2019
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build with Nuitka
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          } else {
+            $VERSION = python -c "from backend.core.app_info import APP_VERSION; print(APP_VERSION)"
+          }
+          Write-Host "VERSION=$VERSION"
+          echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+          $env:VERSION = $VERSION
+          python -c "from pathlib import Path; import os; v=os.environ['VERSION']; Path('backend/core/_generated_version.py').write_text('\"\"\"Auto-generated during CI build.\"\"\"\\nVERSION = \"' + v + '\"\\n', encoding='utf-8')"
+          python deploy.py
+
+      - name: Create zip file
+        shell: pwsh
+        run: |
+          $distPath = "dist/SilkLoom.dist"
+          $zipFile = "SilkLoom-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip"
+
+          # Create a zip file containing the contents of SilkLoom.dist, without the folder itself
+          Write-Output "Zipping contents of $distPath..."
+          Compress-Archive -Path "$distPath\*" -DestinationPath $zipFile
+          Write-Output "Zip created at $zipFile"
+
+      - name: Download Inno Setup Translation Files
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl" -OutFile "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+
+      - name: Build Installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+        with:
+          path: SilkLoom.iss
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            SilkLoom-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip
+            dist/SilkLoom-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
+
+  build-macos-14-arm:
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [arm64]
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build with Nuitka
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(python3 -c "from backend.core.app_info import APP_VERSION; print(APP_VERSION)")
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          export VERSION
+          python3 -c 'from pathlib import Path; import os; v=os.environ["VERSION"]; Path("backend/core/_generated_version.py").write_text("\"\"\"Auto-generated during CI build.\"\"\"\\nVERSION = \"" + v + "\"\\n", encoding="utf-8")'
+          python deploy.py
+          chmod u+x "dist/SilkLoom.app/Contents/MacOS/SilkLoom"
+
+      - name: Create DMG with visual layout
+        run: |
+          # Create a temporary folder for DMG contents with proper layout
+          mkdir -p dmg_stage
+          cp -r dist/SilkLoom.app dmg_stage/
+          ln -s /Applications dmg_stage/Applications
+          
+          # Copy pre-generated background
+          mkdir -p dmg_stage/.background
+          cp assets/dmg/background.png dmg_stage/.background/background.png
+          
+          DIST_MB=$(du -sm dmg_stage | awk '{print $1}')
+          DMG_MB=$((DIST_MB + DIST_MB / 3 + 256))
+          if [ "$DMG_MB" -lt 700 ]; then DMG_MB=700; fi
+
+          echo "dmg stage size: ${DIST_MB}MB"
+          echo "dmg size : ${DMG_MB}MB"
+
+          hdiutil create \
+            -srcfolder "dmg_stage" \
+            -volname "SilkLoom" \
+            -fs HFS+ \
+            -fsargs "-c c=64,a=16,e=16" \
+            -format UDZO \
+            -size "${DMG_MB}m" \
+            "SilkLoom-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg"
+          
+          rm -rf dmg_stage
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: SilkLoom-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg
+
+  build-ubuntu:
+    strategy:
+      matrix:
+        architecture: [x86_64]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(python3 -c "from backend.core.app_info import APP_VERSION; print(APP_VERSION)")
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          export VERSION
+          python3 -c 'from pathlib import Path; import os; v=os.environ["VERSION"]; Path("backend/core/_generated_version.py").write_text("\"\"\"Auto-generated during CI build.\"\"\"\\nVERSION = \"" + v + "\"\\n", encoding="utf-8")'
+          python deploy.py
+
+      - name: Zip the contents of SilkLoom
+        run: |
+          distPath="dist/SilkLoom"
+          zipFile="SilkLoom-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.zip"
+
+          # Create a zip file containing the contents of SilkLoom, without the folder itself
+          echo "Zipping contents of $distPath..."
+          cd "$distPath"
+          zip -r "../../$zipFile" .
+          cd "../.."
+          echo "Zip created at $zipFile"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: SilkLoom-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.zip
