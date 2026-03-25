@@ -22,6 +22,7 @@ from backend.core.data_io import (
     write_records_jsonl,
 )
 from backend.core.template_tools import analyze_template_requirements
+from backend.security.secrets_codec import encrypt_config_yaml
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -120,6 +121,7 @@ class UniversalExtractor:
         self._init_db()
 
     def _init_db(self):
+        secure_yaml = encrypt_config_yaml(self.yaml_str)
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS experiments (
@@ -177,7 +179,7 @@ class UniversalExtractor:
                     SET file_path = ?, yaml_config = ?, task_name = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """,
-                    (self.file_path, self.yaml_str, task_name, description, status, keep_id),
+                    (self.file_path, secure_yaml, task_name, description, status, keep_id),
                 )
             else:
                 conn.execute(
@@ -185,7 +187,7 @@ class UniversalExtractor:
                     INSERT INTO experiments (file_path, yaml_config, task_name, description, status)
                     VALUES (?, ?, ?, ?, ?)
                 """,
-                    (self.file_path, self.yaml_str, f"任务_{self.task_hash[:8]}", "", "idle"),
+                    (self.file_path, secure_yaml, f"任务_{self.task_hash[:8]}", "", "idle"),
                 )
 
     async def _call_llm_async(self, prompt, sem):

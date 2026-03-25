@@ -1,46 +1,10 @@
 import os
-import sys
-from pathlib import Path
+
+from backend.app_paths import ensure_app_dirs
+from backend.security.secrets_codec import decrypt_config_yaml, encrypt_config_yaml
 
 
-def _get_config_dir() -> Path:
-    """Return config directory, supports portable mode."""
-    if env_config := os.getenv("SILKLOOM_CONFIG_DIR"):
-        return Path(env_config)
-
-    if sys.platform == "win32":
-        appdata = os.getenv("APPDATA", str(Path.home()))
-        user_config_dir = Path(appdata) / "SilkLoom"
-    else:
-        if sys.platform == "darwin":
-            user_config_dir = Path.home() / "Library" / "Application Support" / "SilkLoom"
-        else:
-            user_config_dir = Path.home() / ".config" / "SilkLoom"
-
-    user_config_dir.mkdir(parents=True, exist_ok=True)
-    return user_config_dir
-
-
-def _get_config_file() -> Path:
-    base_dir = Path(__file__).resolve().parent.parent
-    portable_config = base_dir / "config.yml"
-
-    # Prefer workspace-local config when available or writable.
-    if portable_config.exists():
-        return portable_config
-
-    if os.access(base_dir, os.W_OK):
-        return portable_config
-
-    config_dir = _get_config_dir()
-    config_file = config_dir / "config.yml"
-    if config_file.exists():
-        return config_file
-
-    return config_file
-
-
-CONFIG_FILE = str(_get_config_file())
+CONFIG_FILE = str(ensure_app_dirs()["config_file"])
 
 DEFAULT_YAML = """llm:
   api_key: \"YOUR_API_KEY_OR_USE_ENV\"
@@ -86,8 +50,9 @@ task:
 
 def save_yaml(yaml_str):
     try:
+        yaml_to_save = encrypt_config_yaml(yaml_str)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            f.write(yaml_str)
+            f.write(yaml_to_save)
             f.flush()
             os.fsync(f.fileno())
         return True
@@ -99,7 +64,8 @@ def load_default_yaml():
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return f.read()
+                stored_yaml = f.read()
+            return decrypt_config_yaml(stored_yaml)
         except Exception:
             pass
 

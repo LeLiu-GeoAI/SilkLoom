@@ -4,11 +4,14 @@
 import os
 from pathlib import Path
 
+from backend.app_paths import ensure_app_dirs
+
 # ==================== 文件系统 ====================
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DB_DIR = os.path.join(BASE_DIR, "db_cache")
-EXPORT_DIR = os.path.join(DB_DIR, "exports")
-LOG_DIR = os.path.join(BASE_DIR, "logs")
+_PATHS = ensure_app_dirs()
+BASE_DIR = str(_PATHS["data_root"])
+DB_DIR = str(_PATHS["db_dir"])
+EXPORT_DIR = str(_PATHS["export_dir"])
+LOG_DIR = str(_PATHS["log_dir"])
 
 # 创建必要目录
 for directory in [DB_DIR, EXPORT_DIR, LOG_DIR]:

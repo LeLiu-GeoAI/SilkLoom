@@ -4,6 +4,7 @@ import uuid
 from typing import Dict, List, Optional
 
 from backend.core.constants import DB_DIR
+from backend.security.secrets_codec import decrypt_secret, encrypt_secret
 
 MODEL_DB_PATH = os.path.join(DB_DIR, "models.db")
 
@@ -65,7 +66,10 @@ def list_models() -> List[Dict]:
             ORDER BY is_default DESC, updated_at DESC
             """
         ).fetchall()
-    return [dict(r) for r in rows]
+    items = [dict(r) for r in rows]
+    for item in items:
+        item["api_key"] = decrypt_secret(item.get("api_key", ""))
+    return items
 
 
 def get_model_by_name(name: str) -> Optional[Dict]:
@@ -81,7 +85,11 @@ def get_model_by_name(name: str) -> Optional[Dict]:
             """,
             (name,),
         ).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    item = dict(row)
+    item["api_key"] = decrypt_secret(item.get("api_key", ""))
+    return item
 
 
 def get_default_model() -> Optional[Dict]:
@@ -95,13 +103,18 @@ def get_default_model() -> Optional[Dict]:
             LIMIT 1
             """
         ).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    item = dict(row)
+    item["api_key"] = decrypt_secret(item.get("api_key", ""))
+    return item
 
 
 def upsert_model(name: str, api_key: str, base_url: str, model: str, proxy_url: str = "", row_id: str = "", make_default: bool = False) -> bool:
     init_model_db()
     if not name.strip() or not base_url.strip() or not model.strip() or not api_key.strip():
         return False
+    encrypted_key = encrypt_secret(api_key.strip())
     try:
         with _conn() as conn:
             if make_default:
@@ -117,7 +130,7 @@ def upsert_model(name: str, api_key: str, base_url: str, model: str, proxy_url: 
                             is_default = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE row_id = ?
                         """,
-                        (name.strip(), api_key.strip(), base_url.strip(), model.strip(), proxy_url.strip(), 1 if make_default else 0, row_id),
+                        (name.strip(), encrypted_key, base_url.strip(), model.strip(), proxy_url.strip(), 1 if make_default else 0, row_id),
                     )
                     return True
 
@@ -126,7 +139,7 @@ def upsert_model(name: str, api_key: str, base_url: str, model: str, proxy_url: 
                 INSERT INTO model_profiles (row_id, name, api_key, base_url, model, proxy_url, is_default)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (str(uuid.uuid4()), name.strip(), api_key.strip(), base_url.strip(), model.strip(), proxy_url.strip(), 1 if make_default else 0),
+                (str(uuid.uuid4()), name.strip(), encrypted_key, base_url.strip(), model.strip(), proxy_url.strip(), 1 if make_default else 0),
             )
         return True
     except sqlite3.IntegrityError:

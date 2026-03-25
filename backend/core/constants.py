@@ -1,8 +1,11 @@
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DB_DIR = os.path.join(BASE_DIR, "db_cache")
-EXPORT_DIR = os.path.join(DB_DIR, "exports")
+from backend.app_paths import ensure_app_dirs
+
+_PATHS = ensure_app_dirs()
+BASE_DIR = str(_PATHS["data_root"])
+DB_DIR = str(_PATHS["db_dir"])
+EXPORT_DIR = str(_PATHS["export_dir"])
 
 if not os.path.exists(DB_DIR):
     os.makedirs(DB_DIR)

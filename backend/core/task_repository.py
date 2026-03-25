@@ -2,6 +2,7 @@ import os
 import sqlite3
 
 from backend.core.constants import DB_DIR
+from backend.security.secrets_codec import decrypt_config_yaml
 
 
 def list_all_tasks():
@@ -116,7 +117,7 @@ def get_task_config(task_hash):
             return {
                 "hash": task_hash,
                 "file_path": file_path,
-                "yaml_config": yaml_config,
+                "yaml_config": decrypt_config_yaml(yaml_config or ""),
                 "task_name": task_name or f"任务_{task_hash[:8]}",
                 "description": desc or "",
                 "status": status,
