@@ -152,7 +152,7 @@ Excel 示例（位于examples\01 文献梳理\data.xls）：
 
 点击下载完整的示例数据包（包含所有 3 个示例）：
 
-**[📦 下载 examples-data.zip](./examples-data.zip)**
+**[📦 下载 examples-data.zip](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/examples.zip)**
 
 包含内容：
 - `01 文献梳理/`：学术论文摘要分析（提取背景、意义、问题、结论）
