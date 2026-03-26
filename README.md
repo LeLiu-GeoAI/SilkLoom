@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="40%" align="center" src="screenshot\logo.png" alt="logo">
+  <img width="25%" align="center" src="screenshot\logo.png" alt="logo">
 </p>
 <h1 align="center">SilkLoom（蚕小织）</h1>
 
@@ -146,23 +146,28 @@ Excel 示例（位于examples\01 文献梳理\data.xls）：
 
 ## 可直接运行的 examples（推荐先跑通）
 
-你可以直接使用仓库里的 `examples` 目录中的数据，不需要自己手写提示词和输出字段。
+提供 3 个现成的示例任务，包含完整的数据、配置和输出字段定义。无需手写提示词，直接导入即可运行。
 
-### 1）下载示例数据（含下载链接）
+### 1）一键下载示例数据包
 
-| 示例 | 数据文件 | 配置文件 | 典型输出字段 |
-| --- | --- | --- | --- |
-| [01 文献梳理](./examples/01%20文献梳理) | [下载 data.xls](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/01%20%E6%96%87%E7%8C%AE%E6%A2%B3%E7%90%86/data.xls) | [下载 task_config.yml](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/01%20%E6%96%87%E7%8C%AE%E6%A2%B3%E7%90%86/task_config.yml) | 研究背景、研究意义、研究问题、研究结论 |
-| [02 旅游文本](./examples/02%20旅游文本) | [下载 data.csv](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/02%20%E6%97%85%E6%B8%B8%E6%96%87%E6%9C%AC/data.csv) | [下载 task_config.yml](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/02%20%E6%97%85%E6%B8%B8%E6%96%87%E6%9C%AC/task_config.yml) | 目的地、行程类型、出行时长、预算水平、交通方式、一句话摘要 |
-| [03 新闻评论](./examples/03%20新闻评论) | [下载 data.csv](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/03%20%E6%96%B0%E9%97%BB%E8%AF%84%E8%AE%BA/data.csv) | [下载 task_config.yml](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/03%20%E6%96%B0%E9%97%BB%E8%AF%84%E8%AE%BA/task_config.yml) | 立场倾向、情绪强度、关注议题、是否提出建议、关键诉求 |
+点击下载完整的示例数据包（包含所有 3 个示例）：
+
+**[📦 下载 examples-data.zip](./examples-data.zip)**
+
+包含内容：
+- `01 文献梳理/`：学术论文摘要分析（提取背景、意义、问题、结论）
+- `02 旅游文本/`：旅行评论结构化（提取目的地、行程、预算等）
+- `03 新闻评论/`：新闻跟评分析（提取立场、情绪、议题等）
+
+每个文件夹内都预配置了 `data.*` 和 `task_config.yml`。
 
 ### 2）在 SilkLoom 中运行示例（3 步）
 
-1. 在主界面选择示例数据文件（`data.xls` 或 `data.csv`）。
-2. 点击“导入配置”，选择同目录下的 `task_config.yml`。
-3. 设置模型配置（API Key、模型名）后点击“开始运行”。
+1. 解压下载的 zip 包。
+2. 在主界面选择示例数据文件（`data.xls` 或 `data.csv`），点击"导入配置"并选择对应的 `task_config.yml`。
+3. 设置模型配置（API Key、模型 ID）后点击"开始运行"。
 
-提示：示例配置中的 `api_key` 默认是 `xxxx`，运行前请替换成你自己的真实 Key。
+提示：`task_config.yml` 中的 `api_key` 默认值为 `xxxx`，使用前请替换为你的真实 API Key。
 
 ---
 
