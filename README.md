@@ -146,45 +146,21 @@ Excel 示例（位于examples\01 文献梳理\data.xls）：
 
 ## 可直接运行的 examples（推荐先跑通）
 
-你可以直接使用仓库里的 `examples` 目录，不需要自己手写提示词和输出字段。
+你可以直接使用仓库里的 `examples` 目录中的数据，不需要自己手写提示词和输出字段。
 
-### 先下载示例数据
+### 1）下载示例数据（含下载链接）
 
-下载整个仓库 ZIP（推荐）
+| 示例 | 数据文件 | 配置文件 | 典型输出字段 |
+| --- | --- | --- | --- |
+| [01 文献梳理](./examples/01%20文献梳理) | [下载 data.xls](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/01%20%E6%96%87%E7%8C%AE%E6%A2%B3%E7%90%86/data.xls) | [下载 task_config.yml](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/01%20%E6%96%87%E7%8C%AE%E6%A2%B3%E7%90%86/task_config.yml) | 研究背景、研究意义、研究问题、研究结论 |
+| [02 旅游文本](./examples/02%20旅游文本) | [下载 data.csv](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/02%20%E6%97%85%E6%B8%B8%E6%96%87%E6%9C%AC/data.csv) | [下载 task_config.yml](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/02%20%E6%97%85%E6%B8%B8%E6%96%87%E6%9C%AC/task_config.yml) | 目的地、行程类型、出行时长、预算水平、交通方式、一句话摘要 |
+| [03 新闻评论](./examples/03%20新闻评论) | [下载 data.csv](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/03%20%E6%96%B0%E9%97%BB%E8%AF%84%E8%AE%BA/data.csv) | [下载 task_config.yml](https://raw.githubusercontent.com/LeLiu-GeoAI/SilkLoom/main/examples/03%20%E6%96%B0%E9%97%BB%E8%AF%84%E8%AE%BA/task_config.yml) | 立场倾向、情绪强度、关注议题、是否提出建议、关键诉求 |
 
-1. 打开：<https://github.com/LeLiu-GeoAI/SilkLoom>
-2. 点击 `Code` -> `Download ZIP`
-3. 解压后进入 `examples` 目录
+### 2）在 SilkLoom 中运行示例（3 步）
 
-### 示例目录说明
-
-- `examples/01 文献梳理`
-  - `data.xls`
-  - `task_config.yml`
-- `examples/02 旅游文本`
-  - `data.csv`
-  - `task_config.yml`
-- `examples/03 新闻评论`
-  - `data.csv`
-  - `task_config.yml`
-
-### 在 SilkLoom 中运行示例（3 步）
-
-1. 在主界面选择对应示例目录中的数据文件（`data.xls` 或 `data.csv`）
-2. 点击“导入配置”，选择同目录下的 `task_config.yml`
-3. 设置模型配置（API Key、模型名）后点击“开始运行”
-
-### 示例 2：旅游文本结构化
-
-- 输入文件：`examples/02 旅游文本/data.csv`
-- 配置文件：`examples/02 旅游文本/task_config.yml`
-- 输出字段：目的地、行程类型、出行时长、预算水平、交通方式、一句话摘要
-
-### 示例 3：新闻评论分析
-
-- 输入文件：`examples/03 新闻评论/data.csv`
-- 配置文件：`examples/03 新闻评论/task_config.yml`
-- 输出字段：立场倾向、情绪强度、关注议题、是否提出建议、关键诉求
+1. 在主界面选择示例数据文件（`data.xls` 或 `data.csv`）。
+2. 点击“导入配置”，选择同目录下的 `task_config.yml`。
+3. 设置模型配置（API Key、模型名）后点击“开始运行”。
 
 提示：示例配置中的 `api_key` 默认是 `xxxx`，运行前请替换成你自己的真实 Key。
 
