@@ -1,0 +1,4 @@
+id,场景描述,image_path
+1,请识别画面主色并给出一句话描述,images/room_red.png
+2,请识别画面主色并给出一句话描述,images/room_green.png
+3,请识别画面主色并给出一句话描述,images/room_blue.png

@@ -30,7 +30,7 @@ class RuntimeStore:
     thread: Optional[threading.Thread] = None
     starting: bool = False
     stop_event: Optional[threading.Event] = None
-    shared_state: dict = field(default_factory=lambda: {"processed": 0, "total": 0, "success": 0, "failed": 0})
+    shared_state: dict = field(default_factory=lambda: {"processed": 0, "total": 0, "success": 0, "failed": 0, "output_rows": 0})
     latest_log: str = ""
     status_text: str = "等待启动..."
     final_message: str = ""
@@ -137,7 +137,7 @@ class RuntimeService:
                 "type": "invalid-input",
                 "status": "⚠️ 请先选择有效的数据文件！",
                 "log": "请选择有效文件后重试。",
-                "shared": {"processed": 0, "total": 0, "success": 0, "failed": 0},
+                "shared": {"processed": 0, "total": 0, "success": 0, "failed": 0, "output_rows": 0},
             }
             return
 
@@ -172,7 +172,7 @@ class RuntimeService:
         latest_log = [""]
         log_buffer = []  # 日志缓冲，减少 UI 更新频率
         log_buffer_time = [time.time()]  # 上次刷新时间
-        shared_state = {"processed": 0, "total": 0, "success": 0, "failed": 0}
+        shared_state = {"processed": 0, "total": 0, "success": 0, "failed": 0, "output_rows": 0}
 
         def web_log_callback(msg):
             """日志回调，带缓冲机制（关键优化）"""
@@ -223,7 +223,7 @@ class RuntimeService:
                 "type": "initialized",
                 "status": "🚀 引擎准备就绪...",
                 "log": "连接到数据库...",
-                "shared": {"processed": 0, "total": max(1, input_rows), "success": 0, "failed": 0},
+                "shared": {"processed": 0, "total": max(1, input_rows), "success": 0, "failed": 0, "output_rows": 0},
             }
 
             final_result = [""]
@@ -253,7 +253,7 @@ class RuntimeService:
                 if log_changed or progress_changed:
                     status_str = (
                         f"⏳ 提取中... [ 进度: {shared_state['processed']} / {shared_state['total']} ] | "
-                        f"成功: {shared_state['success']} | 失败: {shared_state['failed']}"
+                        f"成功: {shared_state['success']} | 失败: {shared_state['failed']} | 输出: {shared_state.get('output_rows', shared_state['success'])}"
                     )
                     with self._lock:
                         self._store.status_text = status_str
@@ -268,7 +268,10 @@ class RuntimeService:
                     if progress_changed:
                         self._console_log(
                             "PROGRESS",
-                            f"processed={progress_now[0]}/{progress_now[1]}, success={progress_now[2]}, failed={progress_now[3]}",
+                            (
+                                f"processed={progress_now[0]}/{progress_now[1]}, success={progress_now[2]}, "
+                                f"failed={progress_now[3]}, output_rows={shared_state.get('output_rows', shared_state['success'])}"
+                            ),
                         )
                         last_progress = progress_now
                     
@@ -280,7 +283,7 @@ class RuntimeService:
             thread.join()
             self._console_log("RUN", f"工作线程结束，task_hash={task_hash[:8]}")
 
-            output_rows = shared_state["success"]
+            output_rows = shared_state.get("output_rows", shared_state["success"])
             final_status = "completed" if not local_stop_event.is_set() else "stopped"
             update_task_metadata(task_hash, status=final_status, output_rows=output_rows)
             self._console_log("META", f"任务状态写入 {final_status}，task_hash={task_hash[:8]}，output_rows={output_rows}")
@@ -307,8 +310,9 @@ class RuntimeService:
         except Exception as e:
             self._console_log("ERROR", f"任务异常，task_hash={task_hash[:8]}，error={str(e)}")
             try:
-                update_task_metadata(task_hash, status="error", output_rows=shared_state.get("success", 0))
-                self._console_log("META", f"任务状态写入 error，task_hash={task_hash[:8]}，output_rows={shared_state.get('success', 0)}")
+                output_rows = shared_state.get("output_rows", shared_state.get("success", 0))
+                update_task_metadata(task_hash, status="error", output_rows=output_rows)
+                self._console_log("META", f"任务状态写入 error，task_hash={task_hash[:8]}，output_rows={output_rows}")
             except Exception:
                 self._console_log("META", "任务状态写入 error 失败。")
 
@@ -336,7 +340,7 @@ class RuntimeService:
                     "ok": False,
                     "status": "当前无运行任务。",
                     "log": self._store.latest_log,
-                    "shared": {"processed": 0, "total": 0, "success": 0, "failed": 0},
+                    "shared": {"processed": 0, "total": 0, "success": 0, "failed": 0, "output_rows": 0},
                     "stopping": False,
                 }
 

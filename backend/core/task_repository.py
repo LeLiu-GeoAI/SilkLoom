@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import time
+import gc
 
 from backend.core.constants import DB_DIR
 from backend.security.secrets_codec import decrypt_config_yaml
@@ -170,13 +172,42 @@ def update_task_metadata(task_hash, task_name=None, description=None, status=Non
 
 def delete_task_db(task_hash):
     db_path = os.path.join(DB_DIR, f"task_{task_hash}.db")
-    if os.path.exists(db_path):
+    if not os.path.exists(db_path):
+        return False, f"数据库文件不存在: {db_path}"
+
+    sidecars = [f"{db_path}-wal", f"{db_path}-shm", f"{db_path}-journal"]
+    last_error = ""
+    # 连接刚关闭时 Windows 句柄可能仍在短时间内被占用，适当延长重试窗口。
+    for _ in range(20):
         try:
-            os.remove(db_path)
-            return True
-        except Exception:
-            return False
-    return False
+            # 主动触发 checkpoint，尽量收敛 WAL/SHM 状态，减少侧文件占用概率。
+            try:
+                with sqlite3.connect(db_path, timeout=1) as conn:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                pass
+
+            gc.collect()
+
+            if os.path.exists(db_path):
+                os.remove(db_path)
+            for sidecar in sidecars:
+                if os.path.exists(sidecar):
+                    try:
+                        os.remove(sidecar)
+                    except Exception:
+                        pass
+            return True, ""
+        except PermissionError as e:
+            last_error = str(e)
+            time.sleep(0.2)
+        except Exception as e:
+            return False, str(e)
+
+    if os.path.exists(db_path):
+        reason = last_error or "未知原因"
+        return False, f"文件被占用或无权限，无法删除: {db_path} | {reason}"
+    return True, ""
 
 
 def clear_task_results(task_hash):

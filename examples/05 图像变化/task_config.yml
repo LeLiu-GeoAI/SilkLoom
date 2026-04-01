@@ -1,0 +1,38 @@
+llm:
+  api_key: xxxx
+  base_url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  model: glm-4v-flash
+  max_tokens: 2048
+  temperature: 0.7
+  max_try: 3
+  timeout: 90
+  retry_delay: 2
+  proxy_url: ''
+  enable_think: false
+run:
+  max_workers: 3
+  shuffle_before_run: false
+task:
+  task_name: 同地点街景变化识别
+  image_path_field: image_path
+  prompt_template: |-
+    你是一个城市街景变化分析助手。
+    下面给你同一地点不同时期的街景图（会按时间标签+图片成对提供）。
+    请重点观察建筑物层面的变化，忽略车辆、行人、天气、拍摄角度轻微偏差。
+
+    【分析目标】
+    {{ row.get('分析目标') }}
+
+    【输出要求】
+    1. 必须只输出 JSON。
+    2. 按时间顺序给出变化判断。
+    3. 若不确定，请明确写“证据不足”。
+
+    【输出格式】
+    {{ schema }}
+  target_schema:
+    是否有建筑变化: 是/否/证据不足
+    变化类型: 新增/拆除/外立面变化/高度变化/功能变化/无明显变化
+    时间序列结论: 按时间顺序描述关键变化节点
+    具体证据: 指出可见的建筑变化证据
+    变化置信度: 0-100 的整数

@@ -13,6 +13,7 @@ run:
   max_workers: 10
   shuffle_before_run: true
 task:
+  image_path_field: ''
   prompt_template: |-
     你是一名专业的信息抽取专家，擅长从学术论文标题和摘要中提炼关键信息。
     请根据提供的【标题】和【摘要】，填写下方 JSON 中的各字段内容。

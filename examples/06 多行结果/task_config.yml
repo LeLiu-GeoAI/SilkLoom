@@ -1,0 +1,64 @@
+llm:
+  api_key: xxxx
+  base_url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  model: glm-4-flash
+  max_tokens: 2048
+  temperature: 0.0
+  max_try: 3
+  timeout: 60
+  retry_delay: 2
+  proxy_url: ''
+  enable_think: false
+run:
+  max_workers: 10
+  shuffle_before_run: true
+task:
+  task_name: GIS术语多行提取
+  image_path_field: ''
+  nested_target_field: terms
+  prompt_template: |-
+    你是一名专业的地理信息科学（GIS）与地理流空间分析领域的信息抽取专家，擅长从学术文本中识别和提取关键专业术语及其含义。
+
+    请根据提供的【文本内容】，提取其中的重要专业术语，并填写下方 JSON 结构。
+
+    【填写要求】
+    1. 仅提取与 GIS、空间分析、流空间分析相关的专业术语。
+    2. 每个术语应为名词或名词短语（避免动词和普通描述）。
+    3. 所有内容必须基于原文，不得编造。
+    4. 每个字段表达简洁（不超过30字）。
+    5. 若某字段无法从原文确定，请填写“未明确说明”。
+    6. 保持术语表达一致，避免重复或同义词冗余。
+
+    【字段说明】
+    - term_zh：中文术语（原文中的表达）
+    - term_en：对应英文术语（若原文未出现，可基于常见学术表达推断，否则填“未明确说明”）
+    - definition：术语在当前语境下的含义（基于原文）
+    - category：术语类别（如：概念 / 方法 / 模型 / 数据结构 / 表达方式）
+    - context：术语出现的原句或简要上下文（可截取关键片段）
+
+    【输入数据】
+    文本内容：
+    {{ row.get('content') }}
+
+    【术语对象字段定义】
+    {{ schema }}
+
+    【输出格式】
+    只输出 JSON，且必须符合以下结构：
+    {
+      "terms": [
+        {
+          "term_zh": "",
+          "term_en": "",
+          "definition": "",
+          "category": "",
+          "context": ""
+        }
+      ]
+    }
+  target_schema:
+    term_zh: 中文术语（原文表达）
+    term_en: 对应英文术语（缺失时填未明确说明）
+    definition: 当前语境下术语含义
+    category: 概念/方法/模型/数据结构/表达方式
+    context: 术语出现的原句或关键上下文

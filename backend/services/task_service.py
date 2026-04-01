@@ -13,13 +13,20 @@ def find_task_by_selector(task_selector):
 
     tasks = list_all_tasks()
     selector = str(task_selector).strip()
-    parts = [p.strip() for p in selector.split("|")]
-    if len(parts) < 2:
-        return None
-
-    hash_hint = parts[1]
-    if not re.fullmatch(r"[0-9a-fA-F]{4,32}", hash_hint):
-        return None
+    parts = [p.strip() for p in selector.split("|") if p.strip()]
+    hash_hint = ""
+    for part in parts:
+        token = part.split()[0] if part.split() else ""
+        if re.fullmatch(r"[0-9a-fA-F]{4,32}", token):
+            hash_hint = token
+            break
+    if not hash_hint:
+        m = re.search(r"\b([0-9a-fA-F]{4,32})\b", selector)
+        if m:
+            hash_hint = m.group(1)
+    if not hash_hint:
+        exact_name_matches = [t for t in tasks if str(t.get("task_name", "")).strip() == selector]
+        return exact_name_matches[0] if len(exact_name_matches) == 1 else None
 
     for task in tasks:
         if task["hash"].startswith(hash_hint):
@@ -74,9 +81,10 @@ def delete_task_action(task_selector, active_task_hash, is_running):
     if is_running and active_task_hash == full_hash:
         return "❌ 任务正在运行，无法删除。请先停止运行。"
 
-    if delete_task_db(full_hash):
+    deleted, reason = delete_task_db(full_hash)
+    if deleted:
         return "✅ 任务已删除"
-    return "❌ 删除失败"
+    return f"❌ 删除失败: {reason or '未知原因'}"
 
 
 def clear_task_results_action(task_selector, active_task_hash, is_running):

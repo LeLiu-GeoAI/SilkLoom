@@ -1,10 +1,13 @@
 import asyncio
+import base64
 import json
+import mimetypes
 import os
 import sqlite3
 import threading
 import time
 import warnings
+from pathlib import Path
 
 import httpx
 import json_repair
@@ -104,6 +107,13 @@ class UniversalExtractor:
             template_str = self.task_cfg.get("prompt_template", "")
             self.req_cols, self.opt_cols = analyze_template_requirements(template_str)
             self.input_cols = self.req_cols + self.opt_cols
+            self.image_path_field = str(self.task_cfg.get("image_path_field", "") or "").strip()
+            self.nested_target_field = str(self.task_cfg.get("nested_target_field", "") or "").strip()
+            nested_target_cfg = self.task_cfg.get("nested_target", {})
+            if not self.nested_target_field and isinstance(nested_target_cfg, dict):
+                self.nested_target_field = str(nested_target_cfg.get("field", "") or "").strip()
+            if self.image_path_field and self.image_path_field not in self.input_cols:
+                self.input_cols.append(self.image_path_field)
             self.llm_api_key = resolve_api_key(self.llm_cfg.get("api_key", ""))
 
         except KeyError as e:
@@ -190,74 +200,273 @@ class UniversalExtractor:
                     (self.file_path, secure_yaml, f"任务_{self.task_hash[:8]}", "", "idle"),
                 )
 
-    async def _call_llm_async(self, prompt, sem):
+    def _resolve_image_items(self, row_dict):
+        if not self.image_path_field:
+            return []
+
+        raw_value = row_dict.get(self.image_path_field)
+        if is_null_value(raw_value):
+            return []
+
+        candidates = []
+        if isinstance(raw_value, (list, tuple)):
+            candidates = list(raw_value)
+        elif isinstance(raw_value, str):
+            text = raw_value.strip()
+            if not text:
+                return []
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        candidates = parsed
+                    else:
+                        candidates = [text]
+                except Exception:
+                    candidates = [text]
+            else:
+                candidates = [text]
+        else:
+            candidates = [str(raw_value)]
+
+        base_dir = Path(self.file_path).resolve().parent
+        resolved_items = []
+        for item in candidates:
+            label_text = ""
+            path_text = ""
+
+            if isinstance(item, dict):
+                path_text = str(
+                    item.get("path")
+                    or item.get("image_path")
+                    or item.get("image_url")
+                    or ""
+                ).strip()
+                label_text = str(
+                    item.get("label")
+                    or item.get("text")
+                    or item.get("meta")
+                    or item.get("time")
+                    or ""
+                ).strip()
+            else:
+                raw_item = str(item or "").strip()
+                if "||" in raw_item:
+                    left, right = raw_item.split("||", 1)
+                    label_text = left.strip()
+                    path_text = right.strip()
+                else:
+                    path_text = raw_item
+
+            if not path_text:
+                continue
+
+            if path_text.startswith("http://") or path_text.startswith("https://"):
+                resolved_items.append({"path": path_text, "label": label_text})
+                continue
+
+            image_path = Path(path_text)
+            if not image_path.is_absolute():
+                image_path = (base_dir / image_path).resolve()
+
+            if not image_path.exists() or not image_path.is_file():
+                raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+            resolved_items.append({"path": str(image_path), "label": label_text})
+
+        return resolved_items
+
+    @staticmethod
+    def _build_image_data_url(image_path):
+        mime, _ = mimetypes.guess_type(image_path)
+        if not mime:
+            mime = "application/octet-stream"
+
+        with open(image_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        return f"data:{mime};base64,{encoded}"
+
+    def _prepare_image_payloads(self, image_items):
+        prepared = []
+        for item in image_items:
+            path = item.get("path", "")
+            label = str(item.get("label", "") or "").strip()
+            if not path:
+                continue
+
+            if path.startswith("http://") or path.startswith("https://"):
+                prepared.append({"label": label, "url": path})
+                continue
+
+            data_url = self._build_image_data_url(path)
+            prepared.append({"label": label, "url": data_url})
+
+        return prepared
+
+    def _build_messages(self, prompt, prepared_images, image_sampling_note=""):
+        if not prepared_images:
+            return [{"role": "user", "content": prompt}]
+
+        content = [{"type": "text", "text": prompt}]
+        if image_sampling_note:
+            content.append({"type": "text", "text": image_sampling_note})
+
+        for idx, item in enumerate(prepared_images, start=1):
+            label = item.get("label", "")
+            if label:
+                content.append({"type": "text", "text": label})
+            else:
+                content.append({"type": "text", "text": f"图片{idx}"})
+
+            image_value = item.get("url", "")
+            content.append({"type": "image_url", "image_url": {"url": image_value}})
+
+        return [{"role": "user", "content": content}]
+
+    async def _call_llm_async(self, prompt, sem, image_items=None, image_sampling_note=""):
         """异步 LLM 调用，带并发控制和重试"""
         async with sem:  # 控制并发度，最多同时 max_workers 个请求
             headers = {
                 "Authorization": f"Bearer {self.llm_api_key}",
                 "Content-Type": "application/json",
             }
-            payload = {
+            payload_base = {
                 "model": self.llm_cfg["model"],
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": self.llm_cfg["temperature"],
-                "max_tokens": int(self.llm_cfg.get("max_tokens", 2048) or 2048),
             }
+
+            try:
+                payload_base["max_tokens"] = int(self.llm_cfg.get("max_tokens", 2048) or 2048)
+            except Exception:
+                payload_base["max_tokens"] = 2048
+
+            try:
+                temperature = float(self.llm_cfg.get("temperature", 0.7))
+            except Exception:
+                temperature = 0.7
+            if 0 < temperature < 1:
+                payload_base["temperature"] = temperature
 
             # 如果启用 think 模式，添加相关参数
             if self.llm_cfg.get("enable_think", False):
                 # 支持多种 API 格式（可按需修改）
                 # OpenAI o1 风格：
-                payload["reasoning"] = {"type": "enabled", "rules": ["custom"]}
+                payload_base["reasoning"] = {"type": "enabled", "rules": ["custom"]}
                 # 或简单标记：
                 # payload["enable_thinking"] = True
 
             timeout = httpx.Timeout(self.llm_cfg.get("timeout", 60), connect=10)
             proxy_url = (self.llm_cfg.get("proxy_url", "") or "").strip()
+            current_image_items = list(image_items or [])
+            current_sampling_note = image_sampling_note
+            last_error_msg = ""
             for attempt in range(self.llm_cfg.get("max_try", 3)):
-                try:
-                    client_kwargs = {"timeout": timeout}
-                    if proxy_url:
-                        client_kwargs["proxy"] = proxy_url
+                prepared_images = self._prepare_image_payloads(current_image_items)
+                messages = self._build_messages(
+                    prompt,
+                    prepared_images,
+                    image_sampling_note=current_sampling_note,
+                )
 
-                    async with httpx.AsyncClient(**client_kwargs) as client:
-                        response = await client.post(
-                            self.llm_cfg["base_url"],
-                            headers=headers,
-                            json=payload,
-                        )
-                        response.raise_for_status()
-                        return response.json()["choices"][0]["message"]["content"]
+                try:
+                    payload = dict(payload_base)
+                    payload["messages"] = messages
+
+                    if proxy_url:
+                        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_url) as client:
+                            response = await client.post(
+                                self.llm_cfg["base_url"],
+                                headers=headers,
+                                json=payload,
+                            )
+                    else:
+                        async with httpx.AsyncClient(timeout=timeout) as client:
+                            response = await client.post(
+                                self.llm_cfg["base_url"],
+                                headers=headers,
+                                json=payload,
+                            )
+
+                    response.raise_for_status()
+                    return response.json()["choices"][0]["message"]["content"]
+                except httpx.HTTPStatusError as e:
+                    status_code = e.response.status_code if e.response is not None else "unknown"
+                    detail = ""
+                    if e.response is not None:
+                        try:
+                            detail = json.dumps(e.response.json(), ensure_ascii=False)
+                        except Exception:
+                            detail = (e.response.text or "").strip()
+                    last_error_msg = f"HTTP {status_code} | {detail}"
+
                 except Exception as e:
-                    if attempt == self.llm_cfg.get("max_try", 3) - 1:
-                        raise RuntimeError(f"大模型 API 请求失败: {str(e)}")
-                    # 等待后重试
+                    last_error_msg = str(e)
+
+                if attempt < self.llm_cfg.get("max_try", 3) - 1:
                     await asyncio.sleep(self.llm_cfg.get("retry_delay", 2))
 
-    def _call_llm(self, prompt, stop_event):
+            raise RuntimeError(f"大模型 API 请求失败: {last_error_msg} | image_count={len(current_image_items)}")
+
+    def _call_llm(self, prompt, stop_event, image_items=None, image_sampling_note=""):
         """同步包装，供线程调用"""
         sem = asyncio.Semaphore(self.max_workers)
         loop = asyncio.new_event_loop()
         try:
             return loop.run_until_complete(
-                self._call_llm_async(prompt, sem)
+                self._call_llm_async(
+                    prompt,
+                    sem,
+                    image_items=image_items,
+                    image_sampling_note=image_sampling_note,
+                )
             )
         finally:
             loop.close()
 
+    @staticmethod
+    def _source_row_id_from_record_id(record_id):
+        text = str(record_id or "").strip()
+        if not text:
+            return ""
+        if "#" in text:
+            return text.split("#", 1)[0]
+        return text
+
+    def _resolve_nested_path(self, payload, path_text):
+        current = payload
+        for key in [part.strip() for part in str(path_text or "").split(".") if part.strip()]:
+            if isinstance(current, dict):
+                current = current.get(key)
+            else:
+                return None
+        return current
+
+    def _extract_output_items(self, parsed_payload):
+        if self.nested_target_field and isinstance(parsed_payload, dict):
+            nested_value = self._resolve_nested_path(parsed_payload, self.nested_target_field)
+            if isinstance(nested_value, dict):
+                return [nested_value]
+            if isinstance(nested_value, list):
+                return [item for item in nested_value if isinstance(item, dict)]
+            return []
+
+        if isinstance(parsed_payload, dict):
+            return [parsed_payload]
+        if isinstance(parsed_payload, list):
+            return [item for item in parsed_payload if isinstance(item, dict)]
+        return []
+
 
     def _parse_single_output(self, raw_text, row_dict):
-        parsed_dict = {}
+        parsed_payload = {}
         if raw_text:
             parsed = json_repair.loads(raw_text)
-            if isinstance(parsed, dict):
-                parsed_dict = parsed
-            elif isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
-                parsed_dict = parsed[0]
+            if isinstance(parsed, (dict, list)):
+                parsed_payload = parsed
 
         in_dict = {col: str(row_dict.get(col, "")) if not is_null_value(row_dict.get(col)) else "" for col in self.input_cols}
-        out_dict = {field: parsed_dict.get(field, "") for field in self.output_cols}
-        return in_dict, out_dict, parsed_dict
+        output_items = self._extract_output_items(parsed_payload)
+        out_rows = [{field: item.get(field, "") for field in self.output_cols} for item in output_items]
+        return in_dict, out_rows, parsed_payload
 
     def _load_done_ids(self):
         done = set()
@@ -265,22 +474,43 @@ class UniversalExtractor:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute("SELECT row_id FROM results")
                 for row in cursor:
-                    done.add(str(row[0]).strip())
+                    done.add(self._source_row_id_from_record_id(row[0]))
         except Exception:
             pass
         return done
 
-    def _save_to_db(self, pid, in_dict, out_dict, raw_text, status="success", error_msg=""):
-        """保存单条记录到批处理列表（而不是直接写入）"""
-        # 返回元组供批量提交
-        return (
-            pid,
-            json.dumps(in_dict, ensure_ascii=False),
-            json.dumps(out_dict, ensure_ascii=False),
-            raw_text,
-            status,
-            error_msg,
+    def _save_to_db(self, pid, in_dict, out_rows, raw_text, status="success", error_msg=""):
+        """保存记录到批处理列表（而不是直接写入）"""
+        base_pid = str(pid or "").strip() or f"row_{int(time.time() * 1000)}"
+        records = []
+
+        if status == "success" and out_rows:
+            multi = len(out_rows) > 1
+            for idx, out_dict in enumerate(out_rows, start=1):
+                row_id = f"{base_pid}#{idx}" if multi else base_pid
+                records.append(
+                    (
+                        row_id,
+                        json.dumps(in_dict, ensure_ascii=False),
+                        json.dumps(out_dict, ensure_ascii=False),
+                        raw_text,
+                        status,
+                        error_msg,
+                    )
+                )
+            return records
+
+        records.append(
+            (
+                base_pid,
+                json.dumps(in_dict, ensure_ascii=False),
+                json.dumps({}, ensure_ascii=False),
+                raw_text,
+                status,
+                error_msg,
+            )
         )
+        return records
 
     def _save_batch_to_db(self, batch):
         """批量写入数据库（关键优化）"""
@@ -299,36 +529,48 @@ class UniversalExtractor:
         
         # 更新运行时 done_ids
         for item in batch:
-            self.done_ids_runtime.add(str(item[0]))
+            self.done_ids_runtime.add(self._source_row_id_from_record_id(item[0]))
 
 
     def _process_single(self, row_dict, log_callback, stop_event):
         """处理单行数据（优化：直接接收字典，避免转换）"""
         if stop_event.is_set():
-            return None, "stopped"
+            return [], "stopped", 0
 
         pid = str(row_dict.get(self.final_id_col, "")).strip() if not is_null_value(row_dict.get(self.final_id_col)) else ""
         # row_dict 已经是字典，无需转换
         prompt = self.prompt_template.render(row=row_dict, schema=self.schema_str_for_prompt)
+        image_items = []
+        image_sampling_note = ""
         raw_text = ""
 
         try:
-            raw_text = self._call_llm(prompt, stop_event)
+            image_items = self._resolve_image_items(row_dict)
+            raw_text = self._call_llm(
+                prompt,
+                stop_event,
+                image_items=image_items,
+                image_sampling_note=image_sampling_note,
+            )
             if stop_event.is_set():
-                return None, "stopped"
+                return [], "stopped", 0
             if not raw_text:
                 raise ValueError("大模型未返回任何文本")
 
-            in_dict, out_dict, raw_json_dict = self._parse_single_output(raw_text, row_dict)
-            if not raw_json_dict:
+            in_dict, out_rows, raw_json_payload = self._parse_single_output(raw_text, row_dict)
+            if not raw_json_payload:
                 raise ValueError("未提取到任何有效 JSON 结构")
+            if not out_rows:
+                if self.nested_target_field:
+                    raise ValueError(f"嵌套目标字段未提取到有效对象: {self.nested_target_field}")
+                raise ValueError("未提取到任何有效输出行")
 
-            log_content = json.dumps(raw_json_dict, ensure_ascii=False, indent=2)
-            log_callback(f"✅ ID: {pid} | 成功解析\n{log_content}")
+            log_content = json.dumps(raw_json_payload, ensure_ascii=False, indent=2)
+            log_callback(f"✅ ID: {pid} | 成功解析 {len(out_rows)} 行\n{log_content}")
 
             # 返回数据记录供批量提交（不再直接写入）
-            record = self._save_to_db(pid, in_dict, out_dict, raw_text, status="success", error_msg="")
-            return record, "success"
+            records = self._save_to_db(pid, in_dict, out_rows, raw_text, status="success", error_msg="")
+            return records, "success", len(out_rows)
 
         except Exception as e:
             error_msg = str(e)
@@ -336,8 +578,8 @@ class UniversalExtractor:
             in_dict = {col: str(row_dict.get(col, "")) if not is_null_value(row_dict.get(col)) else "" for col in self.input_cols}
             
             # 返回数据记录供批量提交
-            record = self._save_to_db(pid, in_dict, {}, raw_text, status="failed", error_msg=error_msg)
-            return record, "failed"
+            records = self._save_to_db(pid, in_dict, [], raw_text, status="failed", error_msg=error_msg)
+            return records, "failed", 0
 
     def run(self, stop_event, shared_state, log_callback=print):
         table = None
@@ -354,6 +596,8 @@ class UniversalExtractor:
             return "❌ 无法读取文件，请确保没有被占用！"
 
         missing_req = [col for col in self.req_cols if col not in table.columns]
+        if self.image_path_field and self.image_path_field not in table.columns:
+            missing_req.append(self.image_path_field)
         if missing_req:
             return f"❌ 中止：数据源缺少必填列 {missing_req}。"
 
@@ -391,17 +635,18 @@ class UniversalExtractor:
                         self._save_batch_to_db(batch)
                     break
                 try:
-                    record, result_status = future.result()
+                    records, result_status, output_count = future.result()
                     shared_state["processed"] += 1
                     
                     if result_status == "success":
                         shared_state["success"] += 1
-                        if record:
-                            batch.append(record)
+                        shared_state["output_rows"] = shared_state.get("output_rows", 0) + output_count
+                        if records:
+                            batch.extend(records)
                     elif result_status == "failed":
                         shared_state["failed"] += 1
-                        if record:
-                            batch.append(record)
+                        if records:
+                            batch.extend(records)
                     
                     # 批量提交检查
                     if len(batch) >= batch_size:
@@ -418,5 +663,11 @@ class UniversalExtractor:
             executor.shutdown(wait=not stop_event.is_set(), cancel_futures=stop_event.is_set())
 
         if stop_event.is_set():
-            return f"🛑 已中断！进度已保存。本次新增: 成功 {shared_state['success']} 条，失败 {shared_state['failed']} 条。"
-        return f"🎉 全部提取完成！本次新增: 成功 {shared_state['success']} 条，失败 {shared_state['failed']} 条。"
+            return (
+                f"🛑 已中断！进度已保存。本次新增: 成功输入 {shared_state['success']} 条，"
+                f"失败输入 {shared_state['failed']} 条，输出 {shared_state.get('output_rows', shared_state['success'])} 行。"
+            )
+        return (
+            f"🎉 全部提取完成！本次新增: 成功输入 {shared_state['success']} 条，"
+            f"失败输入 {shared_state['failed']} 条，输出 {shared_state.get('output_rows', shared_state['success'])} 行。"
+        )

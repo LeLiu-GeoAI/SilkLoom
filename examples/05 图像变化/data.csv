@@ -1,0 +1,2 @@
+地点ID,分析目标,image_path
+739,判断同一地点建筑物是否发生新增/拆除/立面变化，并按时间顺序解释,"[{""label"":""时间：2022"",""path"":""images/739_2022_6_h83_f_p_i-x0EEQDfiwC25hPdCKQAA.jpg""},{""label"":""时间：2023"",""path"":""images/739_2023_3_h89_f_p_5gFfZHbBFMQLYZHX07N_yg.jpg""},{""label"":""时间：2024"",""path"":""images/739_2024_7_h92_f_p_dN9hXkkNz5CjB0eORAipwQ.jpg""}]"

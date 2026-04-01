@@ -21,20 +21,23 @@ run:
   shuffle_before_run: true
 
 task:
-  target_schema:
-    研究背景: 一句话概括研究背景（领域+现有问题）
-    研究意义: 一句话说明研究价值（解决什么/带来什么）
-    研究问题: 一句话说明核心研究问题（要解决什么）
-    研究结论: 一句话总结主要结论（发现/方法/效果）
+  # 多图请求可单独配置token上限；留空则继承max_tokens
+  image_max_tokens: 2048
+  # 输入数据中表示图片路径的列名（相对于输入数据文件所在目录），不使用图片可留空
+  # 是否在带图请求中发送temperature
+  include_temperature_with_images: true
+  # 是否在带图请求中发送reasoning（enable_think=true时）
+  include_reasoning_with_images: false
+  image_path_field: ""
+  # 接口报图片超限时是否自动降采样重试
+  image_limit_retry_enabled: true
+  # 触发自动降采样的错误匹配规则
+  image_limit_error_patterns: ["输入图片数量超过限制"]
+  # 每次重试图片保留比例（0-1）
+  image_limit_reduction_factor: 0.5
 
-  prompt_template: |
+  # 输入数据中表示图片路径的列名（相对于输入数据文件所在目录），不使用图片可留空
     你是一名专业的信息抽取专家，擅长从学术论文标题和摘要中提炼关键信息。
-    请根据提供的【标题】和【摘要】，填写下方 JSON 中的各字段内容。
-    【填写要求】
-    1. 每个字段用一句话概括（不超过30字）。
-    2. 必须基于原文，不得编造。
-    3. 若信息缺失，请填写“未明确说明”。
-    4. 表达简洁、客观，避免重复。
     【字段说明】
     - 研究背景：该研究所处的领域背景或已有问题
     - 研究意义：该研究的价值或作用（为什么重要）

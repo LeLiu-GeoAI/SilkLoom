@@ -167,6 +167,7 @@ class MainWindow(FluentWindow):
         self._model_records = []
         self._task_selectors = []
         self._available_template_vars = []
+        self._task_extra_config = {}
         
         # 新增：GUI配置状态变量
         self._current_schema = {}  # 目标列名字典
@@ -765,6 +766,11 @@ class MainWindow(FluentWindow):
 
         task_dict = parsed.get("task", {}) if isinstance(parsed.get("task", {}), dict) else {}
         task_dict.pop("id_column", None)
+        self._task_extra_config = {
+            k: v
+            for k, v in task_dict.items()
+            if k not in {"prompt_template", "target_schema", "task_name", "id_column"}
+        }
         
         # 新增：分别加载prompt_template和target_schema
         prompt_template = task_dict.get("prompt_template", "")
@@ -813,7 +819,7 @@ class MainWindow(FluentWindow):
 
     def _extract_task_dict(self) -> dict:
         """从GUI组件提取task字典（prompt和schema）"""
-        task = {}
+        task = dict(self._task_extra_config)
         
         # 设置提示词模板
         prompt_text = self.prompt_edit.toPlainText().strip()
@@ -1572,7 +1578,8 @@ class MainWindow(FluentWindow):
             self.runtime_service.is_running(),
         )
         self.task_action_label.setText(result)
-        self._notify("任务删除", result, "info")
+        notify_level = "success" if result.startswith("✅") else "error"
+        self._notify("任务删除", result, notify_level)
         self.refresh_tasks()
 
     def clear_selected_task(self):
